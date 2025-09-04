@@ -16,18 +16,18 @@ import (
 // 配置常量
 const (
 	UpstreamUrl       = "https://chat.z.ai/api/chat/completions"
-	DefaultKey        = "sk-yin"                                                                                                                                                                                                            // 下游客户端鉴权key
+	DefaultKey        = "sk-tbkFoKzk9a531YyUNNF5"                                                                                                                                                                                                            // 下游客户端鉴权key
 	UpstreamToken     = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjMxNmJjYjQ4LWZmMmYtNGExNS04NTNkLWYyYTI5YjY3ZmYwZiIsImVtYWlsIjoiR3Vlc3QtMTc1NTg0ODU4ODc4OEBndWVzdC5jb20ifQ.PktllDySS3trlyuFpTeIZf-7hl8Qu1qYF3BxjgIul0BrNux2nX9hVzIjthLXKMWAf9V0qM8Vm_iyDqkjPGsaiQ" // 上游API的token（回退用）
 	DefaultModelName  = "GLM-4.5"
 	ThinkingModelName = "GLM-4.5-Thinking"
 	SearchModelName   = "GLM-4.5-Search"
-	Port              = ":5566"
+	Port              = ":8080"
 	DebugMode         = true // debug模式开关
 )
 
 // ThinkTagsMode 思考内容处理策略
 const (
-	ThinkTagsMode = "strip" // strip: 去除<details>标签；think: 转为<think>标签；raw: 保留原样
+	ThinkTagsMode = "think" // strip: 去除<details>标签；think: 转为<think>标签；raw: 保留原样
 )
 
 // 伪装前端头部（来自抓包）
@@ -113,18 +113,19 @@ type Usage struct {
 
 // UpstreamData 上游SSE响应结构
 type UpstreamData struct {
-	Type string `json:"type"`
-	Data struct {
-		DeltaContent string         `json:"delta_content"`
-		Phase        string         `json:"phase"`
-		Done         bool           `json:"done"`
-		Usage        Usage          `json:"usage,omitempty"`
-		Error        *UpstreamError `json:"error,omitempty"`
-		Inner        *struct {
-			Error *UpstreamError `json:"error,omitempty"`
-		} `json:"data,omitempty"`
-	} `json:"data"`
-	Error *UpstreamError `json:"error,omitempty"`
+    Type string `json:"type"`
+    Data struct {
+        DeltaContent string         `json:"delta_content"`
+        EditContent  string         `json:"edit_content"`
+        Phase        string         `json:"phase"`
+        Done         bool           `json:"done"`
+        Usage        Usage          `json:"usage,omitempty"`
+        Error        *UpstreamError `json:"error,omitempty"`
+        Inner        *struct {
+            Error *UpstreamError `json:"error,omitempty"`
+        } `json:"data,omitempty"`
+    } `json:"data"`
+    Error *UpstreamError `json:"error,omitempty"`
 }
 
 // UpstreamError 上游错误结构
@@ -479,6 +480,9 @@ func handleStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamRequ
 	scanner := bufio.NewScanner(resp.Body)
 	lineCount := 0
 
+	// 标记是否已发送最初的 answer 片段（来自 EditContent）
+	var sentInitialAnswer bool
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		lineCount++
@@ -528,6 +532,30 @@ func handleStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamRequ
 			upstreamData.Type, upstreamData.Data.Phase, len(upstreamData.Data.DeltaContent), upstreamData.Data.Done)
 
 		// 策略2：总是展示thinking + answer
+		// 处理EditContent在最初的answer信息（只发送一次）
+		if !sentInitialAnswer && upstreamData.Data.EditContent != "" && upstreamData.Data.Phase == "answer" {
+			var out = upstreamData.Data.EditContent
+			if out != "" {
+				var parts = regexp.MustCompile(`\</details\>`).Split(out, -1)
+				if len(parts) > 1 {
+					var content = parts[1]
+					if content != "" {
+						debugLog("发送普通内容: %s", content)
+						chunk := OpenAIResponse{
+							ID:      fmt.Sprintf("chatcmpl-%d", time.Now().Unix()),
+							Object:  "chat.completion.chunk",
+							Created: time.Now().Unix(),
+							Model:   DefaultModelName,
+							Choices: []Choice{{Index: 0, Delta: Delta{Content: content}}},
+						}
+						writeSSEChunk(w, chunk)
+						flusher.Flush()
+						sentInitialAnswer = true
+					}
+				}
+			}
+		}
+
 		if upstreamData.Data.DeltaContent != "" {
 			var out = upstreamData.Data.DeltaContent
 			if upstreamData.Data.Phase == "thinking" {
