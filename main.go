@@ -16,12 +16,12 @@ import (
 // 配置常量
 const (
 	UpstreamUrl       = "https://chat.z.ai/api/chat/completions"
-	DefaultKey        = "sk-tbkFoKzk9a531YyUNNF5"                                                                                                                                                                                                            // 下游客户端鉴权key
+	DefaultKey        = "sk-yin"                                                                                                                                                                                                            // 下游客户端鉴权key
 	UpstreamToken     = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjMxNmJjYjQ4LWZmMmYtNGExNS04NTNkLWYyYTI5YjY3ZmYwZiIsImVtYWlsIjoiR3Vlc3QtMTc1NTg0ODU4ODc4OEBndWVzdC5jb20ifQ.PktllDySS3trlyuFpTeIZf-7hl8Qu1qYF3BxjgIul0BrNux2nX9hVzIjthLXKMWAf9V0qM8Vm_iyDqkjPGsaiQ" // 上游API的token（回退用）
 	DefaultModelName  = "GLM-4.5"
 	ThinkingModelName = "GLM-4.5-Thinking"
 	SearchModelName   = "GLM-4.5-Search"
-	Port              = ":8080"
+	Port              = "5566:8080"
 	DebugMode         = true // debug模式开关
 )
 
